@@ -22,7 +22,7 @@ HOME=ENV['HOME']
 machines = [
 	 { :name => 'chef',       :subd => 'vmhost',    :ip => '174.128.28.11', :ram => '4096', :cpus => '2' },
 	 { :name => 'isilon',     :subd => 'vmhost',    :ip => '174.128.28.21', :ram => '512',  :cpus => '1' },
-	#{ :name => 'mysqlc',     :subd => 'vmhost',    :ip => '172.128.28.22', :ram => '512',  :cpus => '1' },
+	 { :name => 'mariadb',    :subd => 'vmhost',    :ip => '172.128.28.22', :ram => '512',  :cpus => '1' },
 	 { :name => 'ssprodweb',  :subd => 'libraries', :ip => '172.128.28.31', :ram => '512',  :cpus => '1' },
 	#{ :name => 'ssprodjobs', :subd => 'libraries', :ip => '172.128.28.32', :ram => '512',  :cpus => '1' },
 	#{ :name => 'ssprodrepo', :subd => 'libraries', :ip => '172.128.28.33', :ram => '512',  :cpus => '1' },
