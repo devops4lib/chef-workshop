@@ -3,105 +3,86 @@
 # vi: set ft=ruby :
 
 # CONSTANTS
-USERNAME='pke3'
-FIRST_NAME='Kieran'
-LAST_NAME='Etienne'
-EMAIL='pke3@psu.edu'
-PASSWORD='blatherskite'
-USERHOME="/home/#{USERNAME}"
-SHORTNAME="psu-stewardship"
-LONGNAME="'Penn State University Libraries'"
-KEY_LOCATION="/home/#{USERNAME}/.ssh"
-KEY_FILENAME='ext.domain@user'
-COOKBOOK_PATH="#{USERHOME}/Projects/github.com/informaticianme/chef.cookbooks"
+SSH_KEY = 'edu.psu@pke3'
+DOMAIN = 'psu'
+USER_NAME = 'pke3'
+FIRST_NAME = 'Kieran'
+LAST_NAME = 'Etienne'
+EMAIL = 'pke3@psu.edu'
+PASSWORD = 'insecurepassword'
+SHORT_NAME = 'psul'
+LONG_NAME = 'Penn State University Libraries'
 
-# ENVIRONMENT VARIABLES
-HOME=ENV['HOME']
+$chef_client_config = <<SCRIPT
+/bin/echo 'log_level :info' >> /home/vagrant/client.rb
+/bin/echo "log_location '/var/log/chef/client.log'" >> /home/vagrant/client.rb
+/bin/echo "chef_server_url 'https://chef.vmhost.psu.test/organizations/#{SHORT_NAME}'" >> /home/vagrant/client.rb
+/bin/echo "validation_client_name '#{SHORT_NAME}-validator'" >> /home/vagrant/client.rb
+/bin/echo "validation_key '/etc/chef/#{SHORT_NAME}.pem'" >> /home/vagrant/client.rb
+/bin/echo 'ssl_verify_mode :verify_none' >> /home/vagrant/client.rb
+/bin/echo 'verify_api_cert false' >> /home/vagrant/client.rb
+SCRIPT
 
-# VIRTUAL MACHINES
 machines = [
-	 { :name => 'chef',       :subd => 'vmhost',    :ip => '174.128.28.11', :ram => '4096', :cpus => '2' },
-	 { :name => 'isilon',     :subd => 'vmhost',    :ip => '174.128.28.21', :ram => '512',  :cpus => '1' },
-	 { :name => 'mariadb',    :subd => 'vmhost',    :ip => '172.128.28.22', :ram => '512',  :cpus => '1' },
-	 { :name => 'ssprodweb',  :subd => 'libraries', :ip => '172.128.28.31', :ram => '512',  :cpus => '1' },
-	#{ :name => 'ssprodjobs', :subd => 'libraries', :ip => '172.128.28.32', :ram => '512',  :cpus => '1' },
-	#{ :name => 'ssprodrepo', :subd => 'libraries', :ip => '172.128.28.33', :ram => '512',  :cpus => '1' },
-	 { :name => 'sstestweb',  :subd => 'libraries', :ip => '172.128.28.34', :ram => '512',  :cpus => '1' }
-	#{ :name => 'sstestjobs', :subd => 'libraries', :ip => '172.128.28.35', :ram => '512',  :cpus => '1' },
-	#{ :name => 'sstestrepo', :subd => 'libraries', :ip => '172.128.28.36', :ram => '512',  :cpus => '1' }
+	 { name: 'chef',       subdomain: 'vmhost',    ram: '512', cpus: '1' },
+	 { name: 'isilon',     subdomain: 'vmhost',    ram: '512', cpus: '1' }
+	#{ name: 'mariaprod',  subdomain: 'vmhost',    ram: '512', cpus: '1' }
+	#{ name: 'mariatest',  subdomain: 'vmhost',    ram: '512', cpus: '1' }
+	#{ name: 'ssprodweb',  subdomain: 'libraries', ram: '512', cpus: '1' }
+	#{ name: 'ssprodjobs', subdomain: 'libraries', ram: '512', cpus: '1' }
+	#{ name: 'ssprodrepo', subdomain: 'libraries', ram: '512', cpus: '1' }
+	#{ name: 'ssprodweb',  subdomain: 'libraries', ram: '512', cpus: '1' }
+	#{ name: 'ssprodjobs', subdomain: 'libraries', ram: '512', cpus: '1' }
+	#{ name: 'ssprodrepo', subdomain: 'libraries', ram: '512', cpus: '1' }
 ]
 
 Vagrant.configure('2') do |config|
-	config.hostmanager.enabled = true
-	config.hostmanager.manage_host = true
-	config.hostmanager.manage_guest = true
-	config.hostmanager.ignore_private_ip = false
-	config.hostmanager.include_offline = true
-
-	machines.each do |machine|
-		is_chef = machine[:name] == 'chef'
-
-		config.vm.define machine[:name] do |node|
-			node.vm.box = 'centos/7'
-			node.vm.box_check_update
-			node.vm.hostname = "#{machine[:name]}.#{machine[:subd]}.psu.test"
-			node.vm.network :private_network, ip: "#{machine[:ip]}"
-			node.vm.provider :virtualbox do |vb|
-				vb.name = "#{machine[:name]}"
-				vb.memory = "#{machine[:ram]}"
-				vb.cpus = "#{machine[:cpus]}"
-				vb.customize ['modifyvm', :id, '--vram', '33']
+	config.vm.box_check_update = true
+	config.vm.box = 'centos/7'
+	config.vm.network :forwarded_port,
+		guest: 22, host: 2222, id: 'ssh', disabled: true
+	config.vm.network :forwarded_port,
+		guest: 22, host: 2500, id: 'ssh', disabled: false, auto_correct: true
+	config.vm.usable_port_range = (2501..2535)
+	config.landrush.enabled = true
+	config.landrush.tld = "#{DOMAIN}.test"
+		machines.each do |machine|
+		config.vm.define machine[:name] do |guest|
+			guest.vm.hostname = "#{machine[:name]}.#{machine[:subdomain]}.#{DOMAIN}.test"
+			guest.vm.provider :virtualbox do |vb|
+				vb.name = machine[:name]
+				vb.memory = machine[:ram]
+				vb.cpus = machine[:cpus]
+				vb.customize [ 'modifyvm', :id, '--vram', '33' ]
 			end
-			node.vm.provision :file,
-				:source => "#{KEY_LOCATION}/#{KEY_FILENAME}.pem",
-				:destination => "/home/vagrant/#{KEY_FILENAME}.pem"
-			node.vm.provision :file,
-				:source => "#{KEY_LOCATION}/#{KEY_FILENAME}.pub",
-				:destination => "/home/vagrant/#{KEY_FILENAME}.pub"
-			node.vm.provision :shell,
-				:path => "bootstrap-guest.sh",
-				:args => [
-					"#{machine[:name]}",
-					"#{USERNAME}",
-					"#{PASSWORD}",
-					"#{USERHOME}",
-					"#{KEY_LOCATION}",
-					"#{KEY_FILENAME}"
-				]
-
-			if is_chef
-				node.vm.synced_folder "#{HOME}/.chef", "/home/vagrant/pem"
-				node.vm.provision :chef_solo do |chef|
-					chef.run_list = ['recipe[chef-server]']
+			if machine[:name] == 'chef'
+				guest.vm.provision :chef_solo do |chef|
+					chef.synced_folder_type = 'rsync'
+					chef.run_list = [ 'recipe[chef-server]' ]
 				end
-				node.vm.provision :shell,
-					:path => "bootstrap-server.sh",
-					:args => [
-						"#{USERNAME}",
-						"#{FIRST_NAME}",
-						"#{LAST_NAME}",
-						"#{EMAIL}",
-						"#{PASSWORD}",
-						"#{SHORTNAME}",
-						"#{LONGNAME}",
-						"#{COOKBOOK_PATH}"
-					]
-			end
-
-			if !is_chef
-				node.vm.provision :file,
-					:source => "#{HOME}/.chef/#{SHORTNAME}-validator.pem",
-					:destination => "/home/vagrant/#{SHORTNAME}-validator.pem"
-				node.vm.provision :chef_solo do |chef|
-					chef.run_list = ['recipe[chef-client]']
+				config.vm.provision :file,
+					source: ".vagrant/machines/#{machine[:name]}/virtualbox/private_key_#{machine[:name]}",
+					destination: "/home/vagrant/.ssh/private_key_#{machine[:name]}"
+				config.vm.provision :shell,
+					inline: "scp -i /home/vagrant/.ssh/private_key_#{machine[:name]} -o StrictHostKeyChecking=no vagrant@#{machine[:name]}.#{machine[:subdomain]}.#{DOMAIN}.test:/home/vagrant/.ssh/authorized_keys"
+				config.vm.provision :shell,
+					inline: "chef-server-ctl user-create #{USER_NAME} #{FIRST_NAME} #{LAST_NAME} #{EMAIL} #{PASSWORD} -f /vagrant/#{USER_NAME}.pem"
+				config.vm.provision :shell,
+					inline: "chef-server-ctl org-create #{SHORT_NAME} #{LONG_NAME} --association_user #{USER_NAME} -f /vagrant/#{SHORT_NAME}-validator.pem"
+				config.vm.provision :shell,
+					inline: "scp -i /home/vagrant/.ssh/private_key_chef -o StrictHostKeyChecking=no /vagrant/#{USER_NAME}.pem #{ENV['USER']}@10.0.2.2:#{ENV['HOME']}/.chef/#{USER_NAME}.pem"
+				config.vm.provision :shell,
+					inline: "scp -i /home/vagrant/.ssh/private_key_chef -o StrictHostKeyChecking=no /vagrant/#{SHORT_NAME}-validator.pem #{ENV['USER']}@10.0.2.2:#{ENV['HOME']}/.chef/#{SHORT_NAME}-validator.pem"
+			else
+				guest.vm.provision :chef_solo do |chef|
+					chef.synced_folder_type = 'rsync'
+					chef.run_list = [ 'recipe[chef-client]' ]
 				end
-				node.vm.provision :shell,
-					:path => "bootstrap-node.sh",
-					:args => [
-						"#{USERNAME}",
-						"#{machine[:name]}",
-						"#{SHORTNAME}"
-					]
+				guest.vm.provision :file, source: "#{ENV['HOME']}/.chef/#{SHORT_NAME}-validator.pem", destination: "/home/vagrant/#{SHORT_NAME}-validator.pem"
+				guest.vm.provision :shell, inline: "mv /home/vagrant/#{SHORT_NAME}-validator.pem /etc/chef"
+				guest.vm.provision :shell, inline: $script
+				guest.vm.provision :shell, inline: "mv /home/vagrant/client.rb /etc/chef"
+				guest.vm.provision :shell, inline: 'chef-client'
 			end
 		end
 	end

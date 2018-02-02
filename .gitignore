@@ -1,5 +1,2 @@
-.*.sw*
-.vagrant
-*.lock
-cookbooks/*
-.json
+Berksfile.lock
+.vagrant/
