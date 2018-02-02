@@ -2,106 +2,47 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# CONSTANTS
-USERNAME='pke3'
-FIRST_NAME='Kieran'
-LAST_NAME='Etienne'
-EMAIL='pke3@psu.edu'
-PASSWORD='blatherskite'
-USERHOME="/home/#{USERNAME}"
-SHORTNAME="psu-stewardship"
-LONGNAME="'Penn State University Libraries'"
-KEY_LOCATION="/home/#{USERNAME}/.ssh"
-KEY_FILENAME='ext.domain@user'
-COOKBOOK_PATH="#{USERHOME}/Projects/github.com/informaticianme/chef.cookbooks"
+SSH_KEY='ext.domain@ssh'
+DOMAIN='psu'
 
-# ENVIRONMENT VARIABLES
-HOME=ENV['HOME']
-
-# VIRTUAL MACHINES
 machines = [
-	 { :name => 'chef',       :subd => 'vmhost',    :ip => '174.128.28.11', :ram => '4096', :cpus => '2' },
-	 { :name => 'isilon',     :subd => 'vmhost',    :ip => '174.128.28.21', :ram => '512',  :cpus => '1' },
-	 { :name => 'mariadb',    :subd => 'vmhost',    :ip => '172.128.28.22', :ram => '512',  :cpus => '1' },
-	 { :name => 'ssprodweb',  :subd => 'libraries', :ip => '172.128.28.31', :ram => '512',  :cpus => '1' },
-	#{ :name => 'ssprodjobs', :subd => 'libraries', :ip => '172.128.28.32', :ram => '512',  :cpus => '1' },
-	#{ :name => 'ssprodrepo', :subd => 'libraries', :ip => '172.128.28.33', :ram => '512',  :cpus => '1' },
-	 { :name => 'sstestweb',  :subd => 'libraries', :ip => '172.128.28.34', :ram => '512',  :cpus => '1' }
-	#{ :name => 'sstestjobs', :subd => 'libraries', :ip => '172.128.28.35', :ram => '512',  :cpus => '1' },
-	#{ :name => 'sstestrepo', :subd => 'libraries', :ip => '172.128.28.36', :ram => '512',  :cpus => '1' }
+	 { :name => 'chef',       :ssh_port => '3000', :subdomain => 'vmhost',    :ram => '512', :cpus => '1' },
+	 { :name => 'isilon',     :ssh_port => '3001', :subdomain => 'vmhost',    :ram => '512', :cpus => '1' }
+	#{ :name => 'mariaprod',  :ssh_port => '3002', :subdomain => 'libraries', :ram => '512', :cpus => '1' }
+	#{ :name => 'ssprodweb',  :ssh_port => '3003', :subdomain => 'libraries', :ram => '512', :cpus => '1' }
+	#{ :name => 'ssprodjobs', :ssh_port => '3004', :subdomain => 'libraries', :ram => '512', :cpus => '1' }
+	#{ :name => 'ssprodrepo', :ssh_port => '3005', :subdomain => 'libraries', :ram => '512', :cpus => '1' }
+	#{ :name => 'ssprodweb',  :ssh_port => '3006', :subdomain => 'libraries', :ram => '512', :cpus => '1' }
+	#{ :name => 'ssprodjobs', :ssh_port => '3007', :subdomain => 'libraries', :ram => '512', :cpus => '1' }
+	#{ :name => 'ssprodrepo', :ssh_port => '3008', :subdomain => 'libraries', :ram => '512', :cpus => '1' }
 ]
 
 Vagrant.configure('2') do |config|
-	config.hostmanager.enabled = true
-	config.hostmanager.manage_host = true
-	config.hostmanager.manage_guest = true
-	config.hostmanager.ignore_private_ip = false
-	config.hostmanager.include_offline = true
-
+	config.landrush.enabled = true
+	config.landrush.tld = 'psu.test'
+	config.vbguest.auto_update = false
+	config.vm.box_check_update = true
+	config.vm.box = 'centos/7'
+	config.ssh.private_key_path = [ "#{ENV['HOME']}/.ssh/#{SSH_KEY}.pem", "~/.vagrant.d/insecure_private_key" ]
+	config.ssh.insert_key = false
+	config.vm.provision "file", source: "#{ENV['HOME']}/.ssh/#{SSH_KEY}.pub", destination: "~/.ssh/authorized_keys"
 	machines.each do |machine|
-		is_chef = machine[:name] == 'chef'
-
-		config.vm.define machine[:name] do |node|
-			node.vm.box = 'centos/7'
-			node.vm.box_check_update
-			node.vm.hostname = "#{machine[:name]}.#{machine[:subd]}.psu.test"
-			node.vm.network :private_network, ip: "#{machine[:ip]}"
-			node.vm.provider :virtualbox do |vb|
-				vb.name = "#{machine[:name]}"
-				vb.memory = "#{machine[:ram]}"
-				vb.cpus = "#{machine[:cpus]}"
-				vb.customize ['modifyvm', :id, '--vram', '33']
+		config.vm.define machine[:name] do |guest|
+			guest.vm.hostname = "#{machine[:name]}.#{machine[:subdomain]}.#{DOMAIN}.test"
+			guest.vm.network :forwarded_port, :guest => 22, :host => 2222, :id => 'ssh', :disabled => true
+			guest.vm.network :forwarded_port, :guest => 22, :host => machine[:ssh_port]
+			guest.vm.provider :virtualbox do |vb|
+				vb.name = machine[:name]
+				vb.memory = machine[:ram]
+				vb.cpus = machine[:cpus]
+				vb.customize [ 'modifyvm', :id, '--vram', '33' ]
 			end
-			node.vm.provision :file,
-				:source => "#{KEY_LOCATION}/#{KEY_FILENAME}.pem",
-				:destination => "/home/vagrant/#{KEY_FILENAME}.pem"
-			node.vm.provision :file,
-				:source => "#{KEY_LOCATION}/#{KEY_FILENAME}.pub",
-				:destination => "/home/vagrant/#{KEY_FILENAME}.pub"
-			node.vm.provision :shell,
-				:path => "bootstrap-guest.sh",
-				:args => [
-					"#{machine[:name]}",
-					"#{USERNAME}",
-					"#{PASSWORD}",
-					"#{USERHOME}",
-					"#{KEY_LOCATION}",
-					"#{KEY_FILENAME}"
-				]
-
-			if is_chef
-				node.vm.synced_folder "#{HOME}/.chef", "/home/vagrant/pem"
-				node.vm.provision :chef_solo do |chef|
-					chef.run_list = ['recipe[chef-server]']
-				end
-				node.vm.provision :shell,
-					:path => "bootstrap-server.sh",
-					:args => [
-						"#{USERNAME}",
-						"#{FIRST_NAME}",
-						"#{LAST_NAME}",
-						"#{EMAIL}",
-						"#{PASSWORD}",
-						"#{SHORTNAME}",
-						"#{LONGNAME}",
-						"#{COOKBOOK_PATH}"
-					]
-			end
-
-			if !is_chef
-				node.vm.provision :file,
-					:source => "#{HOME}/.chef/#{SHORTNAME}-validator.pem",
-					:destination => "/home/vagrant/#{SHORTNAME}-validator.pem"
-				node.vm.provision :chef_solo do |chef|
-					chef.run_list = ['recipe[chef-client]']
-				end
-				node.vm.provision :shell,
-					:path => "bootstrap-node.sh",
-					:args => [
-						"#{USERNAME}",
-						"#{machine[:name]}",
-						"#{SHORTNAME}"
-					]
+		end
+		config.vm.provision :chef_solo do |chef|
+			if machine[:name] == 'chef'
+				chef.run_list = [ 'recipe[chef-server]' ]
+			else
+				chef.run_list = [ 'recipe[chef-client]' ]
 			end
 		end
 	end

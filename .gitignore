@@ -1,5 +1,1 @@
-.*.sw*
-.vagrant
-*.lock
-cookbooks/*
-.json
+.vagrant/
